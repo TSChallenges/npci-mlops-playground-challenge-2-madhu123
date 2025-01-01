@@ -1,101 +1,74 @@
-import re
-import joblib
-import gradio
 import gradio as gr
-# Loading the Required Packages
+import joblib
 import numpy as np
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.model_selection import train_test_split
-from sklearn import linear_model
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, r2_score
 
+# Step 1: Load the pre-trained model
+model = joblib.load('random_forest_model.pkl')
 
-# Load model
-trained_model = joblib.load(filename = "random_forest_model.pkl")
-
-
-# Prediction function
-#model_rf = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42)
-# Fit the model
-#model_rf.fit(X_train_scaled, y_train.values.ravel())
-
-# Prediction for test set
-#y_pred = model_rf.predict(x_test_scaled)
-
-# Calculate the score/error
-#print("R2 score:", r2_score(y_test, y_pred))
-#print("Mean squared error:", mean_squared_error(y_test, y_pred))
-
-# UI - Input components
-in_tdedate = gradio.Textbox(lines=1, placeholder=None, value="2011-June-24", label='hourly date')
-in_season = gradio.Radio(["spring", "summer", "fall", "winter"], type="value", label='season')
-in_hr = gradio.Textbox(lines=1, placeholder=None, value="1am", label='hr')
-in_holiday = gradio.Radio(["Yes", "No"], type="value", label='is holiday')
-in_weekday = gradio.Radio(["Sat", "sun"], type="value", label=' weekday')
-in_workingday = gradio.Radio(["mon", "tue", "wed", "thu", "fri"], type="value", label='workingday')
-in_weather = gradio.Radio(["Heavy Rain", "Light Rain", "Mist", "Clear"], type="value", label='weatherist')
-in_temp = gradio.Textbox(lines=1, placeholder=None, value="10", label='temperature in celsius')
-in_atemp = gradio.Textbox(lines=1, placeholder=None, value="0", label='temperature in celsius')
-in_hum = gradio.Textbox(lines=1, placeholder=None, value="40", label='humidity')
-in_windspeed = gradio.Textbox(lines=1, placeholder=None, value="16.99", label='windspeed')
-
-# UI - Output component
-out_label = gradio.Textbox(type="text", label='Prediction', elem_id="out_textbox")
-
-# Mappings for categorical features
-season_mapping = {'spring': 0, 'winter': 1, 'summer': 2, 'fall': 3}
-yr_mapping = {2011: 0, 2012: 1}
-mnth_mapping = {'January': 0, 'February': 1, 'December': 2, 'March': 3, 'November': 4, 'April': 5,
-                'October': 6, 'May': 7, 'September': 8, 'June': 9, 'July': 10, 'August': 11}
-weather_mapping = {'Heavy Rain': 0, 'Light Rain': 1, 'Mist': 2, 'Clear': 3}
-holiday_mapping = {'Yes': 0, 'No': 1}
-workingday_mapping = {'No': 0, 'Yes': 1}
-hour_mapping = {'4am': 0, '3am': 1, '5am': 2, '2am': 3, '1am': 4, '12am': 5, '6am': 6, '11pm': 7, '10pm': 8,
-                '10am': 9, '9pm': 10, '11am': 11, '7am': 12, '9am': 13, '8pm': 14, '2pm': 15, '1pm': 16,
-                '12pm': 17, '3pm': 18, '4pm': 19, '7pm': 20, '8am': 21, '6pm': 22, '5pm': 23}
-
-
-
-# Label prediction function
-def get_output_label(in_tdedate, in_season, in_hr, in_holiday, in_weekday, in_workingday, in_weather, in_temp, in_atemp, in_hum, in_windspeed):
+# Step 2: Define the prediction function
+def predict_bike_rent(season, hr, holiday, yr, mnth, workingday, weathersit, temp, atemp, humidity, windspeed, 
+                      weekday_Fri, weekday_Mon, weekday_Sat, weekday_Sun, weekday_Thu, weekday_Tue, weekday_Wed):
+    # Mapping categorical inputs to integers
+    season_map = {'spring': 1, 'summer': 2, 'fall': 3, 'winter': 4}
+    weathersit_map = {
+        'Clear': 1, 'Few clouds': 2, 'Partly cloudy': 3, 'Mist + Cloudy': 4,
+        'Mist + Broken clouds': 5, 'Mist + Few clouds': 6, 'Mist': 7, 
+        'Light Snow': 8, 'Light Rain + Thunderstorm + Scattered clouds': 9, 
+        'Light Rain + Scattered clouds': 10, 'Heavy Rain + Ice Pallets + Thunderstorm + Mist': 11, 'Snow + Fog': 12
+    }
     
-    input_df = pd.DataFrame({'tdedate': [in_tdedate], 
-                             'season': [season_mapping[in_season]], 
-                             'hour': [hour_mapping[in_hr]],
-                             'holiday': [holiday_mapping[in_holiday]],
-                             'weekday': [in_weekday],
-                             'workingday': [workingday_mapping[in_workingday]],
-                             #'yr': [yr_mapping[in_yr]],
-                             'weather': [weather_mapping[in_weather]],
-                             'temp': [in_temp],
-                             'atemp': [in_atemp],
-                             'hum': [in_hum],
-                             'windspeed': [in_windspeed]})
+    # Convert categorical inputs
+    season = season_map[season]
+    weathersit = weathersit_map[weathersit]
+    holiday = int(holiday)
+    workingday = int(workingday)
+
+    # Convert weekday checkboxes to binary
+    weekday_Fri = int(weekday_Fri)
+    weekday_Mon = int(weekday_Mon)
+    weekday_Sat = int(weekday_Sat)
+    weekday_Sun = int(weekday_Sun)
+    weekday_Thu = int(weekday_Thu)
+    weekday_Tue = int(weekday_Tue)
+    weekday_Wed = int(weekday_Wed)
     
-    prediction = trained_model.predict(input_df)     # Make a prediction using the saved model
-    print(prediction[0])
-#    if prediction[0] == 1:
-#        label = "Likely to Survive"
-#    else:
-#        label = "Less likely to Survive"
+    # Prepare input features
+    input_features = np.array([[season, hr, holiday, yr, mnth, workingday, weathersit, temp, atemp, humidity, windspeed, 
+                                weekday_Fri, weekday_Mon, weekday_Sat, weekday_Sun, weekday_Thu, weekday_Tue, weekday_Wed]])
+    
+    # Predict using the model
+    prediction = model.predict(input_features)
+    return f"Predicted bike rentals: {int(prediction[0])}"
 
-    return (prediction[0])
+# Gradio Interface
+interface = gr.Interface(
+    fn=predict_bike_rent,
+    inputs=[
+        gr.Dropdown(choices=['spring', 'summer', 'fall', 'winter'], label="Season"),
+        gr.Slider(minimum=0, maximum=23, step=1, label="Hour of the Day (hr)"),
+        gr.Checkbox(label="Is Holiday?"),
+        gr.Slider(minimum=0, maximum=1, step=1, label="Year (yr) (0 = 2011, 1 = 2012)", value=1),
+        gr.Slider(minimum=1, maximum=12, step=1, label="Month (mnth)"),
+        gr.Checkbox(label="Is Working Day?"),
+        gr.Dropdown(choices=['Clear', 'Few clouds', 'Partly cloudy', 'Mist + Cloudy', 'Mist + Broken clouds', 'Mist + Few clouds', 
+                             'Mist', 'Light Snow', 'Light Rain + Thunderstorm + Scattered clouds', 'Light Rain + Scattered clouds', 
+                             'Heavy Rain + Ice Pallets + Thunderstorm + Mist', 'Snow + Fog'], label="Weather Situation"),
+        gr.Slider(minimum=-10, maximum=40, step=1, label="Temperature (°C)"),
+        gr.Slider(minimum=-10, maximum=40, step=1, label="Feels Like Temperature (°C)"),
+        gr.Slider(minimum=0, maximum=100, step=1, label="Humidity (%)"),
+        gr.Slider(minimum=0, maximum=100, step=1, label="Windspeed (km/h)"),
+        gr.Checkbox(label="Is Friday?"),
+        gr.Checkbox(label="Is Monday?"),
+        gr.Checkbox(label="Is Saturday?"),
+        gr.Checkbox(label="Is Sunday?"),
+        gr.Checkbox(label="Is Thursday?"),
+        gr.Checkbox(label="Is Tuesday?"),
+        gr.Checkbox(label="Is Wednesday?")
+    ],
+    outputs="text",
+    title="Bike Rental Prediction",
+    description="Enter the features to predict the number of bike rentals, including season, hour, weather, and weekday information."
+)
 
-
-# Create Gradio interface object
-iface = gradio.Interface(fn = get_output_label,
-                         inputs = [in_tdedate, in_season, in_hr, in_holiday, in_weekday, in_workingday, in_weather, in_temp, in_atemp, in_hum, in_windspeed],
-                         outputs = [out_label],
-                         title="bike rental app",
-                         description="bike rent hours model",
-                         flagging_mode='never'
-                         )
-
-# Launch gradio interface
-iface.launch(server_name = "0.0.0.0", server_port = 7860)
-                         # set server_name = "0.0.0.0" and server_port = 7860 while launching it inside container.
-                         # default server_name = "127.0.0.1", and server_port = 7860
+# Launch the interface
+interface.launch()
